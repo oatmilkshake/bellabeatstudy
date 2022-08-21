@@ -1,0 +1,367 @@
+---
+title: "Bellabeat Case Study"
+author: "Sophie Kubli"
+date: '2022-06-28'
+output:
+  github_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+
+This is a case study for the Data Analytics Google Certificate provided through Coursera. The case study focuses on **Bellabeat**, a high-tech manufacturer of health-focused products for women. They would like to grow their company and become a larger player in the global smart device market. The assignment is to analyze smart fitness device data to gain insights into how customers use these devices and help guide Bellabeat’s marketing strategy.
+
+#### Bellabeat Products
+
+* **Bellabeat app**: The Bellabeat app provides users with health data related to their activity, sleep, stress, menstrual cycle, and mindfulness habits. This data can help users better understand their current habits and make healthy decisions. The Bellabeat app connects to their line of smart wellness products.
+* **Leaf**: Bellabeat’s classic wellness tracker can be worn as a bracelet, necklace, or clip. The Leaf tracker connects to the Bellabeat app to track activity, sleep, and stress.
+* **Time**: This wellness watch combines the timeless look of a classic timepiece with smart technology to track user activity, sleep, and stress. The Time watch connects to the Bellabeat app to provide you with insights into your daily wellness.
+* **Spring**: This is a water bottle that tracks daily water intake using smart technology to ensure that you are appropriately hydrated throughout the day. The Spring bottle connects to the Bellabeat app to track your hydration levels.
+
+## The Data
+
+### First Dataset
+This dataset was provided to me through the case study. 30 respondents of a 2016 survey, conducted by Amazon Mechanical Turk, consented to the submission of personal tracker data. The data includes minute-level output for physical activity, heart rate, and sleep monitoring. The data is segmented into 18 tables. Most of these tables are in long format, but the minute-level output dataframes are stored in both long and wide format. The data does not include any personal identifiable information.
+
+#### Limitations
+
+* The source stated there were 30 participants; however, there are 33 unique ID numbers within the data.
+* The gender in this dataset is unknown. Gender could provide important information for Bellabeat, as they are a company providing products for women.
+
+### Second Dataset
+
+This dataset was not provided through the case study. This study was done by Daniel Fuller through the Harvard Dataverse. The objective of this study was to examine whether commercial wearable devices could accurately predict lying, sitting, and different physical activity intensity in a lab based protocol. The sample includes 46 participants. The outcome variable for the study was the activity class: lying, sitting, walking self-paced, 3 METS, 5 METS, and 7 METS. Minute-by-minute heart rate, steps, distance, and calories from Apple Watch and Fitbit were included in four different machine learning models. The data is stored and collected from GENEActiv, Apple Watch Series 2, and Fitbit Charge HR2 smart devices. This dataset does not include any personal identifiable information.
+
+#### Limitations
+
+* No Id numbers for each participant
+* The study was done to determine the accuracy of Fitbit and Apple Watch machine learning detecting activity type, so the data for heart rate, steps, etc. do not 100% represent to the activity level data. However, this study determined that Apple Watch and Fitbit could predict activity type with reasonable accuracy.
+
+******
+
+## Process Stage
+
+I used RStudio to complete my analysis.
+
+First, I loaded the packages I will need. 
+
+```{r library, results='hide', message=FALSE}
+library(tidyverse)
+library(lubridate)  
+library(janitor)
+library(dplyr)
+library(stringr)
+library(reshape2)
+library(readr)
+library(scales)
+```
+### Cleaning Daily Activity Data
+```{r download, results='hide', message=FALSE}
+dailyActivity_merged <- read_csv("dailyActivity_merged.csv")
+```
+```{r head}
+head(dailyActivity_merged)
+```
+```{r}
+#Counting number of Ids using dplyr (there should be 30 unique Ids)
+dailyActivity_merged %>% 
+  count(Id)
+#There are 33 unique Ids in the dataset instead of 30.
+```
+```{r minmax}
+#checking min and max values in Calories column to find any outliers
+min(dailyActivity_merged$Calories)
+max(dailyActivity_merged$Calories)
+#since there is at least one row in this column with 0, let's find out how many.
+dailyActivity_merged %>% 
+  count(Calories == 0)
+#There are 4 instances of 0 in the calories column, but it is unlikely 0 calories were burned in a day. These could have been days that weren't logged because the participant didn't wear the watch, or some other reason. 
+```
+```{r, results='hide'}
+#Changing the format of the ActivityDay/Date column using lubridate within the tidyverse package.
+dailyActivity_merged$Date <- as_date(dailyActivity_merged$ActivityDate, format = '%m/%d/%Y')
+#Using lubridate again to change the date format to days of the week.
+dailyActivity_merged$Day <- wday(dailyActivity_merged$Date,label = TRUE)
+```
+```{r, echo=FALSE}
+colnames(dailyActivity_merged)
+```
+
+### Cleaning Hourly Activity Data
+
+```{r, results='hide', message=FALSE}
+hourlySteps_merged <- read_csv("hourlySteps_merged.csv")
+hourlyIntensities_merged <- read_csv("hourlyIntensities_merged.csv")
+hourlyCalories_merged <- read_csv("hourlyCalories_merged.csv")
+```
+
+```{r, results='hide'}
+#converting date and times to UTC. 
+hourlyCalories_merged$datetime <- as_datetime(hourlyCalories_merged$ActivityHour, format = '%m/%d/%Y %I:%M:%OS %p')
+hourlyIntensities_merged$datetime <- as_datetime(hourlyIntensities_merged$ActivityHour, format = '%m/%d/%Y %I:%M:%OS %p')
+hourlySteps_merged$datetime <- as_datetime(hourlySteps_merged$ActivityHour, format = '%m/%d/%Y %I:%M:%OS %p')
+
+#Separating the date and time into new columns.
+hourlyCalories_merged[c('Date', 'Hour')] <- str_split_fixed(hourlyCalories_merged$datetime, ' ', 2)
+hourlyIntensities_merged[c('Date', 'Hour')] <- str_split_fixed(hourlyIntensities_merged$datetime, ' ', 2)
+hourlySteps_merged[c('Date', 'Hour')] <- str_split_fixed(hourlySteps_merged$datetime, ' ', 2)
+```
+
+```{r, results='hide'}
+#creating a merged table for hourly data. 
+HourlyTotal_merged <- hourlyCalories_merged %>% 
+  inner_join(hourlyIntensities_merged,by.x="Id") %>% 
+  inner_join(hourlySteps_merged,by.x="Id")
+```
+```{r}
+#try again with POSIXct
+```
+
+
+```{r}
+head(HourlyTotal_merged)
+```
+
+### Cleaning Second Dataset
+
+```{r, results='hide', message=FALSE, warning=FALSE}
+aw_fb_data <- read_csv("aw_fb_data.csv")
+```
+
+```{r, echo=FALSE}
+head(aw_fb_data)
+```
+
+```{r, results='hide', message=FALSE, warning=FALSE}
+aw_fb_clean <- data.frame(select(aw_fb_data, -2) %>% 
+  rename(heart_rate = hear_rate)) #creates a data frame and removes x1 column that is irrelevant to my analysis and fixes spelling error in heart_rate column.
+
+aw_fb_clean <- data.frame(clean_names(aw_fb_clean)) #removes anything in column names that isn't a character, underscore, or number.
+
+#the height, weight, age, and gender columns will most likely be unique to each individual, so I will group by these variables to verify the sample size. 
+aw_fb_sample <- data_frame(aw_fb_clean %>% 
+               group_by(weight, height, age, gender) %>% 
+               summarize(length(x1)))
+```
+
+```{r}
+nrow(aw_fb_sample)
+#this data frame shows that there are 49 unique age,height,weight, and gender. This is larger than the sample size of 46, but that could be due a change in weight or increase in age during the collection.
+```
+
+```{r}
+#now, I want to determine the number value that represents each gender.
+aw_fb_sample %>%
+  count(gender == 0)
+
+#since I know that the sample should include 26 women, I will use F for 0 and M for 1. I will change the gender column in the cleaned data frame.
+```
+```{r}
+class(aw_fb_clean$gender)
+```
+
+```{r, results='hide'}
+aw_fb_clean <- data.frame(aw_fb_clean %>% 
+                            transform(gender = as.character(gender))) #this changes the data type from numeric to character.
+```
+```{r}
+class(aw_fb_clean$gender)
+```
+```{r}
+aw_fb_clean <- data.frame(aw_fb_clean %>%
+  mutate(gender = str_replace(gender, "0","F"), gender = str_replace(gender, "1","M")))
+```
+```{r, echo=FALSE}
+head(aw_fb_clean)
+```
+
+******
+
+## Analysis Stage
+
+Next, I created new data frames to analyze and visualize the data. 
+
+```{r, warning=FALSE}
+#creates a new data frame with averages for each day of the week from the Daily Activity table.
+dailyActivity_Avg <-
+data_frame(dailyActivity_merged %>%
+  group_by(Day) %>%
+  summarize(AvgSteps = mean(TotalSteps), 
+            AvgCals = mean(Calories), AvgSedentaryMins = mean(SedentaryMinutes), AvgLightlyActiveMins = 
+              mean(LightlyActiveMinutes), AvgFairlyActiveMins = mean(FairlyActiveMinutes), AvgVeryActiveMins = 
+              mean(VeryActiveMinutes), AvgDistance = mean(TotalDistance), AvgSedentaryActiveDist = 
+              mean(SedentaryActiveDistance), AvgLightlyActiveDist = mean(LightActiveDistance), 
+              AvgModeratelyActiveDist = mean(ModeratelyActiveDistance), AvgVeryActiveDist = 
+              mean(VeryActiveDistance)))
+```
+```{r, echo=FALSE}
+head(dailyActivity_Avg)
+```
+
+```{r, message=FALSE}
+#creates a new data frame grouped by the activity type and gender.
+aw_fb_activity <- 
+  data_frame(aw_fb_clean %>% 
+               group_by(activity, gender) %>% 
+               summarize(AvgHeartRate = mean(heart_rate), AvgCals = mean(calories), AvgDistance = mean(distance), 
+                         AvgSteps = mean(steps)))
+```
+```{r, echo=FALSE}
+head(aw_fb_activity)
+```
+
+```{r, message=FALSE}
+#creates new data frame for averages of each unique weight,height,age,gender.
+aw_fb_grouped <- data_frame(aw_fb_clean %>% 
+                             group_by(weight, height, age, gender) %>% 
+                             summarize(AvgHeartRate = mean(heart_rate), AvgCals = mean(calories), AvgDistance = 
+                                         mean(distance), AvgSteps = mean(steps)))
+
+#same as aw_fb_grouped, but also groups by activity.
+aw_fb_grouped2 <- data_frame(aw_fb_clean %>% 
+                              group_by(weight, height, age, gender, activity) %>% 
+                              summarize(AvgHeartRate = mean(heart_rate), AvgCals = mean(calories), AvgDistance = 
+                                          mean(distance), AvgSteps = mean(steps)), NumOfActivity = 
+                                          length(activity))
+```
+```{r}
+head(aw_fb_grouped)
+head(aw_fb_grouped2)
+```
+
+```{r, message=FALSE}
+#creates a new data frame for HOURLY data with averages per hour. 
+
+HourlyAvg <-
+  data_frame(HourlyTotal_merged %>%
+               group_by(Hour) %>%
+               summarize(AvgCals = mean(Calories), AvgTotalInt = mean(TotalIntensity), AvgAvgInt = 
+                           mean(AverageIntensity), AvgSteps = mean(StepTotal)))
+```
+```{r, echo=FALSE}
+head(HourlyAvg)
+```
+
+```{r, results='hide'}
+#Creating new tables with the minutes and distance of activity separated. 
+DailyActivityMin <- dailyActivity_Avg[ , c("Day", "AvgSedentaryMins", "AvgLightlyActiveMins", "AvgFairlyActiveMins", "AvgVeryActiveMins")] 
+DailyActivityDist <- dailyActivity_Avg[ , c("Day", "AvgSedentaryActiveDist", "AvgLightlyActiveDist", "AvgModeratelyActiveDist", "AvgVeryActiveDist")]
+
+#converting those tables into long format for visualizations. 
+DailyActivityMin <- melt(DailyActivityMin, id = "Day", variable.name = "Activity", value.name = "Minutes")
+DailyActivityDist <- melt(DailyActivityDist, id = "Day", variable.name = "Activity", value.name = "Distance")
+```
+```{r}
+head(DailyActivityMin)
+head(DailyActivityDist)
+```
+
+*******
+
+## Visualizations
+
+#### Average Heart Rate For Each Activity Type
+
+This will show two bar graphs, one for female and one for male, showing the **average heart rate** during different **activity levels**. On average, BPM (beats per minute) for women is greater during higher intensity activities than for men.
+```{r}
+HeartRateActivityGraph <- ggplot(data = aw_fb_activity) +
+  geom_bar(mapping=aes(x=activity,y=AvgHeartRate, fill=gender), stat = "identity") +
+  facet_wrap(~gender, labeller = as_labeller(c("F" = "Women", "M" = "Men")))
+
+HeartRateActivityGraph + labs(x = "Activity Type", y = "Average Heart Rate (bpm)",
+                              title ="Average Heart Rate For Each Activity Type",
+                              subtitle = "MET = Metabolic Equivalent of Task") +
+  theme(axis.text.x = element_text(angle = 90), legend.position = "none")
+```
+
+
+#### Average Time Spent per Activity Level Each Day
+
+This will show a grouped bar graph with each **Activity Level** represented as a different bar. From this graph, it's clear that the participants spent a large portion of their day being sedentary.
+```{r}
+#create a bar graph with groups showing activity levels minutes each day
+ActivityDailyGraph <-
+  ggplot(DailyActivityMin, aes(fill=Activity, y=Minutes, x=Day)) + 
+  geom_bar(position="dodge", stat="identity")
+ActivityDailyGraph + labs(title = "Average Time Spent per Activity Level Each Day") +
+  scale_fill_discrete(name = "Activity Level", labels = c("Sedentary", "Lightly Active", "Fairly Active", "Very Active"))
+```
+
+
+This next graph will be the same, but will exclude sedentary minutes and fairly active minutes to get a better idea of which days were most active.
+```{r}
+#creating grouped bar graph with only fairly and very active minutes
+MoreActiveDailyGraph <- 
+  DailyActivityMin %>% 
+  filter(Activity != "AvgSedentaryMins", Activity != "AvgLightlyActiveMins") %>% 
+  ggplot(aes(fill=Activity, y=Minutes, x=Day)) + 
+  geom_bar(position="dodge", stat="identity")
+MoreActiveDailyGraph + labs(title = "Average Time Spent per Activity Level Each Day",
+                            subtitle = "Excluding Sedentary and Lightly Active minutes") +
+  scale_fill_brewer(name = "Activity Level", labels = c("Fairly Active", "Very Active"), palette = "Paired")
+```
+
+
+This bar graph shows that the most active days are Mondays and Tuesdays and least active days are Thursdays and Sundays. But, for further analysis, I created another graph with the **total** activity minutes recorded each day of the week.
+
+```{r}
+TotalActivityDailyGraph <-
+  ggplot(DailyActivityMin, aes(x=Day, y=Minutes, fill = "pink")) +
+  geom_bar(stat = "identity") +
+  theme(legend.position = "none")
+TotalActivityDailyGraph + labs(title = "Average Number of Minutes Recorded by FitBit Each Day")
+```
+
+This graph shows that on average, more minutes are recorded on Mondays, Tuesdays, and Fridays. This could be because the watch is worn longer by participants on those days.
+
+#### Average Number of Calories Burned by Hour of Day
+
+This will create a bar graph showing the average number of calories burned each hour of the day with darker blue representing more calories burned. This graph shows that during the day, the most calories are burned from 5pm-7pm.
+
+```{r}
+#Amount of Calories burned every hour
+DayCaloriesGraph <- ggplot(data = HourlyAvg) +
+  geom_bar(mapping=aes(x=Hour, y=AvgCals, fill=AvgCals), stat = "identity") +
+  scale_fill_steps(low = "#cfcffa", high = "#282873", na.value = NA)
+
+DayCaloriesGraph + labs(x="Time", y="Calories Burned",
+                        title = "Average Number of Calories Burned by Hour of Day") +
+  theme(axis.text.x = element_text(angle = 90))
+```
+
+******
+
+## Conclusion
+
+#### Recap
+
+* The average heart rate for women is higher than men during higher intensity activities, but about the same during lower intensity activities. 
+* On average, participants spent less than 25 minutes a day being fairly active and only about 15 minutes a day being very active.
+* Monday, Tuesday, and Saturday are most active days while Thursdays are least active.
+* Monday, Tuesday, and Friday are the days of the week with the most recorded minutes of activity overall.
+* On average, the highest number of calories burned in a day occurs between 5pm-7pm.
+
+#### Recommendations
+Using my analysis, I will be making marketing recommendations for the Bellabeat's *Time* smart device. The data I have analyzed is from other smart watch devices, similar to the Time device. 
+
+Since women tend to have a higher heart rate than men during higher intensity activities, an award system could be added when the *Time* device measures a heart rate increase during higher activity levels. According to the CDC, 150 total minutes of physical activity is recommended in a week. Since activity levels appear to decrease as the week progresses and increases as the weekend approaches, a notification can be sent to *Time* devices on Wednesday to encourage movement or exercise. 
+
+#### To expand my findings...
+Bellabeat's marketing is aimed towards women, so additional smart device data including gender would be preferred to provide further recommendations. For more data-driven marketing decisions, survey data would likely be helpful in determining what consumers like and don't like about other smart devices on the market. 
+
+******
+
+## Citations
+
+Centers for Disease Control and Prevention. (2022, June 2). *How much physical activity do adults need?* Centers for Disease Control and Prevention. Retrieved July 12, 2022, from https://www.cdc.gov/physicalactivity/basics/adults/index.htm 
+
+Fuller, D. (2020, March 5). *Replication data for: Using machine learning methods to predict physical activity types with Apple Watch and Fitbit data using indirect calorimetry as the criterion.* Harvard Dataverse. Retrieved June 28, 2022, from https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi%3A10.7910%2FDVN%2FZS2Z2J 
+
+Furberg, R., Brinton, J., Keating, M., Ortiz, A., &amp; Möbius. (2016, May 31). *FitBit Fitness Tracker Data.* Kaggle. Retrieved June 28, 2022, from https://www.kaggle.com/datasets/arashnic/fitbit/metadata 
+
+
+
